@@ -1,0 +1,132 @@
+<div class="app-container">
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 3.5 19 6v5.2c0 4.4-2.8 7.8-7 9.3-4.2-1.5-7-4.9-7-9.3V6l7-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+          <path d="M9 11.8h6M9 14.8h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+        </svg>
+      </div>
+      <div>
+        <p class="brand-kicker">EMPLOYEE HANDBOOK</p>
+        <span class="brand-name">Policy Assistant</span>
+      </div>
+    </div>
+    <div class="header-tag">
+      <span class="header-tag-dot" aria-hidden="true"></span>
+      Handbook Q&amp;A
+    </div>
+  </header>
+
+  <main class="chat-container" aria-label="Policy assistant chat">
+    <section class="chat-heading">
+      <div>
+        <p class="eyebrow">YOUR HANDBOOK, MADE EASIER TO SEARCH</p>
+        <h1>Ask a policy question</h1>
+        <p class="heading-copy">Get a clear answer with references to the relevant handbook pages.</p>
+      </div>
+      <div class="heading-decoration" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M13 18.5A5.5 5.5 0 0 1 18.5 13h27a5.5 5.5 0 0 1 5.5 5.5v27a5.5 5.5 0 0 1-5.5 5.5h-27a5.5 5.5 0 0 1-5.5-5.5v-27Z" stroke="currentColor" stroke-width="2" />
+          <path d="M23 26h18M23 33h18M23 40h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </div>
+    </section>
+
+    <div class="chat-body">
+      @if (messages().length === 0) {
+      <div class="welcome-message">
+        <div class="welcome-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15H7.5A2.5 2.5 0 0 0 5 20.5v-15Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+            <path d="M5 18a2 2 0 0 1 2-2h12M9 7h6M9 10h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+        </div>
+        <h2>What would you like to know?</h2>
+        <p>Ask about a handbook policy, process, or benefit. I’ll look for the relevant excerpts.</p>
+        <div class="suggestion-area">
+          <span class="suggestion-label">POPULAR TOPICS</span>
+          <div class="suggestions" aria-label="Example topics">
+            <span class="suggestion-chip">Paid time off</span>
+            <span class="suggestion-chip">Sick leave</span>
+            <span class="suggestion-chip">Workplace conduct</span>
+            <span class="suggestion-chip">Parental leave</span>
+          </div>
+        </div>
+      </div>
+      }
+
+      <div class="message-container" #messageContainer role="log" aria-live="polite" aria-relevant="additions text">
+        @for (message of messages(); track $index) {
+        <div class="message-row" [class.user-row]="message.role === 'user'"
+          [class.assistant-row]="message.role === 'assistant'">
+          <div class="message-avatar" [class.user-avatar]="message.role === 'user'"
+            [class.assistant-avatar]="message.role === 'assistant'" aria-hidden="true">
+            {{ message.role === 'user' ? 'Y' : 'P' }}
+          </div>
+
+          <article class="message" [class.user-message]="message.role === 'user'"
+            [class.assistant-message]="message.role === 'assistant'" [class.error-message]="message.isError">
+            <div class="message-role">
+              {{ message.role === 'user' ? 'You' : 'Policy Assistant' }}
+            </div>
+
+            <div class="message-content">
+              @if (message.content) {
+              {{ message.content }}
+              } @else {
+              <div class="typing-indicator" role="status" aria-label="Generating answer">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              }
+            </div>
+
+            @if (message.error) {
+            <div class="message-error" role="alert">{{ message.error }}</div>
+            }
+
+            @if (message.sources && message.sources.length > 0) {
+            <details class="sources">
+              <summary>
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M5.5 2.5h6l4 4v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+                  <path d="M11.5 2.8v4h3.7M7.5 10h5M7.5 13h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+                </svg>
+                Sources <span class="source-count">{{ message.sources.length }}</span>
+              </summary>
+              <ul>
+                @for (source of message.sources; track $index) {
+                <li><span>{{ source.document }}</span><span class="source-page">Page {{ source.page }}</span></li>
+                }
+              </ul>
+            </details>
+            }
+          </article>
+        </div>
+        }
+      </div>
+    </div>
+
+    <form class="composer" (submit)="$event.preventDefault(); sendMessage()">
+      <label class="sr-only" for="policy-question">Ask a handbook question</label>
+      <div class="composer-field">
+        <input id="policy-question" type="text" [(ngModel)]="question" name="question"
+          [disabled]="isLoading()"
+          placeholder="Ask about a policy or handbook topic..." autocomplete="off" />
+        <button type="submit" [disabled]="isLoading() || !question.trim()" aria-label="Send question">
+          @if (isLoading()) {
+          <span>Thinking...</span>
+          } @else {
+          <span>Send</span>
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 10h13M10.5 4.5 16 10l-5.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          }
+        </button>
+      </div>
+      <p class="composer-note">Answers are based on handbook excerpts. Bracketed template values may be unconfirmed.</p>
+    </form>
+  </main>
+</div>
