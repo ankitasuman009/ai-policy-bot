@@ -1,12 +1,18 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.documents import Document
+from dotenv import load_dotenv
+import os
 import re
+from urllib.parse import urlparse
 
 from typer import prompt
+
+load_dotenv()
 
 # Step 1: Initialize embedding model
 embeddings = HuggingFaceEmbeddings(
@@ -38,11 +44,44 @@ hybrid_retriever = EnsembleRetriever(
     weights=[0.5, 0.5]
 )
 
-# Initialize LLM
-llm = ChatOllama(
-    model="llama3.2:3b",
-    temperature=0
-)
+def create_llm():
+    """Build the configured model client; local Ollama remains the default."""
+    provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+    model = os.getenv("LLM_MODEL", "llama3.2:3b").strip()
+    temperature = float(os.getenv("LLM_TEMPERATURE", "0"))
+
+    if provider == "ollama":
+        return ChatOllama(model=model, temperature=temperature)
+
+    if provider in {"openai-compatible", "openai_compatible"}:
+        base_url = os.getenv(
+            "OPENAI_BASE_URL", "http://localhost:11434/v1"
+        ).rstrip("/")
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        hostname = urlparse(base_url).hostname
+        if not api_key and hostname in {"localhost", "127.0.0.1", "::1"}:
+            # Ollama requires a key-shaped value for OpenAI clients but ignores
+            # it for requests to its local server.
+            api_key = "ollama"
+        if not api_key:
+            raise RuntimeError(
+                "Set OPENAI_API_KEY when using an OpenAI-compatible endpoint "
+                "that requires authentication."
+            )
+        return ChatOpenAI(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
+            use_responses_api=False,
+        )
+
+    raise ValueError(
+        "Unsupported LLM_PROVIDER. Choose 'ollama' or 'openai-compatible'."
+    )
+
+
+llm = create_llm()
 
 print("Dynamic RAG components initialized successfully!")
 
@@ -229,6 +268,46 @@ def clean_placeholder_markers(answer: str, context: str = "") -> str:
                 f"(applicability unconfirmed): {condition}. It states: {body}"
             )
     return answer
+
+
+def iter_safe_stream_fragments(chunks):
+    """Yield model text promptly while holding split internal markers safely."""
+    marker = "[UNRESOLVED TEMPLATE VALUE:"
+    marker_folded = marker.casefold()
+    pending = ""
+
+    def replace_markers(text: str) -> str:
+        return re.sub(
+            r"\[UNRESOLVED TEMPLATE VALUE:\s*(.*?)\]",
+            lambda match: f"[{match.group(1).strip().rstrip(' .')}]",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+    for chunk in chunks:
+        pending += chunk
+        folded = pending.casefold()
+        open_marker = folded.rfind(marker_folded)
+        safe_end = len(pending)
+
+        if open_marker >= 0 and "]" not in pending[open_marker:]:
+            safe_end = open_marker
+        else:
+            # Hold a trailing partial marker if Ollama split it across tokens.
+            max_partial = min(len(marker) - 1, len(pending))
+            for size in range(max_partial, 0, -1):
+                if folded.endswith(marker_folded[:size]):
+                    safe_end -= size
+                    break
+
+        if safe_end > 0:
+            ready, pending = pending[:safe_end], pending[safe_end:]
+            ready = replace_markers(ready)
+            if ready:
+                yield ready
+
+    if pending:
+        yield replace_markers(pending)
 
 
 _STOP_WORDS = {
@@ -418,18 +497,26 @@ def get_answer_stream(question: str, history: list[dict] | None = None):
     context = prepare_context(retrieved_docs, question)
     prompt = build_answer_prompt(question, context, history)
 
-    response_text = ""
+    raw_parts = []
+    streamed_parts = []
 
-    for chunk in llm.stream(prompt):
-        if chunk.content:
-            response_text += chunk.content
+    def model_text_chunks():
+        for chunk in llm.stream(prompt):
+            if chunk.content:
+                raw_parts.append(chunk.content)
+                yield chunk.content
 
-    cleaned_response = clean_placeholder_markers(response_text, context)
+    for fragment in iter_safe_stream_fragments(model_text_chunks()):
+        streamed_parts.append(fragment)
+        yield {"type": "token", "content": fragment}
 
-    yield {
-        "type": "token",
-        "content": cleaned_response
-    }
+    cleaned_response = clean_placeholder_markers("".join(raw_parts), context)
+    streamed_response = "".join(streamed_parts)
+
+    # The final sanitizer can add template notes or conditional-section text.
+    # Replace the displayed draft only when that final cleanup changed it.
+    if cleaned_response != streamed_response:
+        yield {"type": "replace", "content": cleaned_response}
 
     yield {
         "type": "sources",

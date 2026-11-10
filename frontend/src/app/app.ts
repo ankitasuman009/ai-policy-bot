@@ -68,6 +68,14 @@ export class App {
                   : message
               )
             );
+          } else if (event.type === 'replace') {
+            this.messages.update(current =>
+              current.map((message, index) =>
+                index === assistantIndex
+                  ? { ...message, content: event.content }
+                  : message
+              )
+            );
           } else if (event.type === 'sources') {
             this.messages.update(current =>
               current.map((message, index) =>

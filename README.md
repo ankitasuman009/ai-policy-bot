@@ -4,9 +4,19 @@ A local document question-answering app for exploring an employee handbook. It c
 
 > **Demo document:** The included handbook is a public template, not a finalized company policy. Bracketed values and optional sections in it may be unfilled or conditional. Treat them as unconfirmed.
 
-## Preview
+## Screenshots
 
-![Policy Assistant chat interface](images/home.png)
+### Home screen
+
+![Policy Assistant home screen](images/home.png)
+
+### Workplace conduct question
+
+![Workplace conduct question and answer](images/Demo1.png)
+
+### Sick leave question
+
+![Sick leave question and answer](images/Demo2.png)
 
 ## Features
 
@@ -35,13 +45,17 @@ flowchart LR
     B --> A
 ```
 
+The hybrid retriever combines BM25 keyword results with Chroma semantic results using rank fusion:
+
+![Reciprocal rank fusion illustration](images/RRF.png)
+
 ## Tech stack
 
 | Area | Tools |
 |---|---|
 | Frontend | Angular, TypeScript, HTML, CSS |
 | API | Python, FastAPI, Pydantic |
-| Language model | Ollama, `llama3.2:3b` |
+| Language model | Ollama (`llama3.2:3b` by default), LangChain `ChatOpenAI` for OpenAI-compatible endpoints |
 | Retrieval | BM25, semantic search, ensemble rank fusion |
 | Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`) |
 | Vector store | ChromaDB |
@@ -53,16 +67,19 @@ flowchart LR
 ```text
 ai-policy-bot/
 ├── images/
-│   └── home.png               # Chat UI preview
+│   ├── home.png               # Chat home screen
+│   ├── Demo1.png              # Workplace conduct example
+│   ├── Demo2.png              # Sick leave example
+│   └── RRF.png                # Rank-fusion illustration
 ├── documents/
-│   ├── company_policy.pdf     # Source handbook template
-│   └── image.png              # Rank-fusion illustration
+│   └── company_policy.pdf     # Source handbook template
 ├── chroma_db/                 # Generated Chroma index
 ├── frontend/                  # Angular application
 ├── src/
 │   ├── ingest.py              # PDF parsing and indexing
 │   ├── rag.py                 # Retrieval and answer generation
 │   └── main.py                # FastAPI app and chat endpoints
+├── .env.example               # Model-provider configuration template
 ├── test_hybrid.py
 ├── test_retrieval.py
 ├── test_stream.py
@@ -96,6 +113,19 @@ ollama pull llama3.2:3b
 ```
 
 Make sure the Ollama service is running before starting the API.
+
+### Optional: select the OpenAI-compatible client
+
+The default configuration uses LangChain's native `ChatOllama` integration. To run the same local Ollama model through LangChain's `ChatOpenAI` client and Ollama's OpenAI-compatible endpoint, copy `.env.example` to `.env` and set:
+
+```dotenv
+LLM_PROVIDER=openai-compatible
+LLM_MODEL=llama3.2:3b
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
+```
+
+The local Ollama server ignores the key-shaped value, so this mode does not use OpenAI credits. To point the client at a hosted OpenAI-compatible service, set that service's base URL, model, and API key instead; hosted services may charge for use. Do not commit `.env` or real API keys.
 
 ### 3. Index the handbook
 
@@ -159,14 +189,3 @@ The sample PDF is the [Workable Employee Handbook template](https://resources.wo
 - The sample handbook contains incomplete and optional template content, so some policy values are intentionally unspecified.
 - The demo API does not include authentication or multi-user data isolation.
 
-## Rank fusion illustration
-
-The retriever combines keyword and semantic result rankings to prioritize passages that appear near the top of either result list.
-
-![Reciprocal rank fusion illustration](images/RRF.png)
-
-![Home Page](images/home.png)
-
-![Demo1](images/Demo1.png)
-
-![Demo2](images/Demo2.png)

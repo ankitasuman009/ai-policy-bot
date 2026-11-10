@@ -8,6 +8,7 @@ interface Source {
 
 export type StreamEvent =
     | { type: 'token'; content: string }
+    | { type: 'replace'; content: string }
     | { type: 'sources'; sources: Source[] }
     | { type: 'done' }
     | { type: 'error'; message: string };
